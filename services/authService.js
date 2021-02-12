@@ -110,6 +110,7 @@ module.exports= {
        
         async.parallel([checkDuplicateUsernameOrEmail.bind()], () => {
           if(userExists){
+
             responseHandler.handleError(res,{ message: "User already exists!" })
           }
           else{
@@ -124,7 +125,8 @@ module.exports= {
                 poc:req.body.poc,
                 account:req.body.account,
                 status:"Requested",
-                verificationCode:verificationCode
+                verificationCode:verificationCode,
+		verificationStatus:0
               }   
             }
     
@@ -296,29 +298,51 @@ module.exports= {
           console.log("---------------db records",docs)
             if(!err && (docs && docs.count >0 )){
               let user=docs.result[0];
-              let verificationCode=user.verificationCode;
-              if(verificationCode === req.body.verificationCode){
+              if(user.verificationStatus && user.verificationStatus === 1){
                 let response={
-                  message:"Agency registered successfully."
+                  message:"Verification code already verified.",
+                  count:2
                 }
-                let mailObj = mailConfig.mailCredentials();
-                let emailReqObj={
-                  from: mailObj.mailInfo.from,
-                  to: req.body.email,
-                  //cc: cc,
-                  subject: "Registered successfully",
-                  template: "registerSuccess",
-                  context:{
-                    username:user.personalDetails.email
-                  }
-                }
-                emailUtils.sendMail(emailReqObj,()=>{
-                      responseHandler.handleSuccess(res,response)
-                })
+                responseHandler.handleSuccess(res,response)
               }
               else{
-                responseHandler.handleError(res,{message:"Verification code does not match."})
+                let verificationCode=user.verificationCode;
+                if(verificationCode === req.body.verificationCode){
+                    let q={
+                      model: "Registration",
+                      f : {
+                        "personalDetails.email": req.body.emailId
+                      },
+                      u:{verificationStatus :1 }
+  
+                    }
+                    dbService.update(q,(err,data) => {
+                    });
+            
+  
+                  let response={
+                    message:"Agency registered successfully."
+                  }
+                  let mailObj = mailConfig.mailCredentials();
+                  let emailReqObj={
+                    from: mailObj.mailInfo.from,
+                    to: req.body.email,
+                    //cc: cc,
+                    subject: "Registered successfully",
+                    template: "registerSuccess",
+                    context:{
+                      username:user.personalDetails.email
+                    }
+                  }
+                  emailUtils.sendMail(emailReqObj,()=>{
+                        responseHandler.handleSuccess(res,response)
+                  })
+                }
+                else{
+                  responseHandler.handleError(res,{message:"Verification code does not match."})
+                }
               }
+             
             }
             else{
               responseHandler.handleError(res,{message:"User does not exist."})
@@ -525,7 +549,8 @@ module.exports= {
           console.log("docssss----------",docs)
             if(!err && (docs && docs.count >0 )){
               let response={
-                message:"Loggedin successfully."
+                message:"Loggedin successfully.",
+                result:docs
               } 
               return cb(null,response)
             }
