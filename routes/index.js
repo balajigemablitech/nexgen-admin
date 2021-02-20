@@ -35,6 +35,8 @@ router.post("/b2b/deleteUsers",authController.deleteUsers)
 router.post("/resendcode",authController.resendVerificationCode)
 
 router.post("/allusers",authController.allusers)
+router.post("/getAgencies",authController.allusers)
+
 router.post("/saveAdminCred",authService.saveAdminCred)
 
 
