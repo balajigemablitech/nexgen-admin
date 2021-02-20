@@ -20,7 +20,7 @@ app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 
 var routes = require('./routes/index');
-var port = normalizePort(process.env.PORT || '5000');
+var port = normalizePort(process.env.port || '5000');
 app.set('port', port);
 
 server.listen(port);

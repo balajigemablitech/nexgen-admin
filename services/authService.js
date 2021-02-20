@@ -73,8 +73,63 @@ module.exports= {
         let persReq = {
           model: "Admin",
           data:{
-             email:"superadmin@nexgen.com",
-             password:"superadmin"
+             "email":"superadmin@nexgen.com",
+             "password":"superadmin",
+             "role" : "SuperAdmin",
+             "functions" : [ 
+        {
+            "subMenus" : [ 
+                "profileView", 
+                "profileCreate", 
+                "profileDelete"
+            ],
+            "menu" : [ 
+                "profile"
+            ]
+        }, 
+        {
+            "subMenus" : [ 
+                "ChangeLogoView", 
+                "ChangeLogoCreate", 
+                "ChangeLogoDelete"
+            ],
+            "menu" : [ 
+                "changeLogo"
+            ]
+        }, 
+        {
+            "subMenus" : [ 
+                "roleView", 
+                "roleCreate", 
+                "roleDelete"
+            ],
+            "menu" : [ 
+                "Roles"
+            ]
+        }, 
+        {
+            "subMenus" : [ 
+                "employeesView", 
+                "employeesCreate", 
+                "employeesDelete"
+            ],
+            "menu" : [ 
+                "Employees"
+            ]
+        }, 
+        {
+            "subMenus" : [ 
+                "bookingsView", 
+                "bookingsCreate", 
+                "bookingsDelete"
+            ],
+            "menu" : [ 
+                "Bookings"
+            ]
+        }
+    ]
+
+
           }   
         }
 
@@ -90,6 +145,7 @@ module.exports= {
 
       register : (req, res) => {
         let userExists=false;
+        let userData=null;
         let checkDuplicateUsernameOrEmail = (n) => {
           // Username
             let reqParams={
@@ -102,6 +158,8 @@ module.exports= {
                 console.log('ddddddddddddddddd',err,docs);
                 if(!err && (docs && docs.count >0 )){
                   userExists=true;
+                  userData=docs.result[0];
+
                 }
                 data=docs;
                 return n();
@@ -110,10 +168,17 @@ module.exports= {
        
         async.parallel([checkDuplicateUsernameOrEmail.bind()], () => {
           if(userExists){
+            console.log("userData.verificationStatus",typeof userData.verificationStatus)
+            if(userData && userData.verificationStatus && userData.verificationStatus === 1){
+              responseHandler.handleError(res,{ message: "User already exists!.Agency approval process is inprogress." })
+            }
+            else{
+              responseHandler.handleError(res,{ message: "User already exists!.Please complete the verification process using the code which has been sent to your email id." })
 
-            responseHandler.handleError(res,{ message: "User already exists!" })
+            }
+            
           }
-          else{
+        else{
             let verificationCode=randomString.generate({
               length: 6,
               charset: 'alphanumeric'
@@ -126,7 +191,7 @@ module.exports= {
                 account:req.body.account,
                 status:"Requested",
                 verificationCode:verificationCode,
-		verificationStatus:0
+		            verificationStatus:0
               }   
             }
     
@@ -358,8 +423,10 @@ module.exports= {
           }
         }
         dbService.fetchRecords(reqParams,function(err,docs){
-          if(!err && (docs && docs.count >0 )){
+          if(!err && (docs && docs.count >0)){
             let register=docs.result[0];
+
+            if(req.body.status === "Approved"){
             let agencyReq={
               model:"agency",
               data:{
@@ -367,8 +434,8 @@ module.exports= {
                 isMain:req.body.isMain, //(for check main aganecy or sub agency),
                 parentAgencyId: req.body.parentAgencyId,//(for sub agency, store parent agency id)
                 enable:true,
-                validityFrom: new Date(req.body.validityFrom),
-                validityTo: new Date(req.body.validityTo),
+               // validityFrom: new Date(req.body.validityFrom),
+                //validityTo: new Date(req.body.validityTo),
                 channelType:req.body.channelType
               }
               
@@ -450,7 +517,21 @@ module.exports= {
                                  }
                                 dbService.update(q,(err,data) => {
                                 });
-                                return callback(null,data);
+                                let mailObj = mailConfig.mailCredentials();
+                                let emailReqObj={
+                                  from: mailObj.mailInfo.from,
+                                  to: register.personalDetails.email,
+                                  //cc: cc,
+                                  subject: "Agency approved successfully",
+                                  template: "agencyApproved",
+                                  context:{
+                                    username:register.personalDetails.email
+                                  }
+                                }
+                                emailUtils.sendMail(emailReqObj,()=>{
+                                   return callback(null,data);
+                                })
+                                
                               }
                               else{
                                 let error={
@@ -469,8 +550,69 @@ module.exports= {
                   });
                 }
               });
+             }
+             else if(req.body.status === "Rejected"){
+               let q = {
+                f: { "registrationId": req.body.uid },
+                u: { 
+                    status:"Rejected"
+                },
+                model: "Registration"
+               }
+                dbService.update(q,(err,data) => {
+                  let error={
+                    "message":"Agency is rejected. Please check with admin team."
+                  }
+                  let mailObj = mailConfig.mailCredentials();
+                  let emailReqObj={
+                    from: mailObj.mailInfo.from,
+                    to: register.personalDetails.email,
+                    //cc: cc,
+                    subject: "Agency Rejected",
+                    template: "agencyRejected",
+                    context:{
+                      username:register.personalDetails.email
+                    }
+                  }
+                  emailUtils.sendMail(emailReqObj,()=>{
+                    return callback(error,null);
+                  })
+                });
+
+             }
+             else if(req.body.status === "MoreInfo"){
+              let q = {
+                f: { "registrationId": req.body.uid },
+                u: { 
+                    status:"MoreInfo"
+                },
+                model: "Registration"
+               }
+                dbService.update(q,(err,data) => {
+                  let error={
+                    "message":"Agency need more info. Please complete the required info for completing agency creation.",
+                    "moreInfo":req.body.moreInfo
+                  }
+                  let mailObj = mailConfig.mailCredentials();
+                  let emailReqObj={
+                    from: mailObj.mailInfo.from,
+                    to: register.personalDetails.email,
+                    //cc: cc,
+                    subject: "Agency need more info",
+                    template: "agencyMoreInfo",
+                    context:{
+                      username:register.personalDetails.email,
+                      moreInfo:req.body.moreInfo
+                    }
+                  }
+                  emailUtils.sendMail(emailReqObj,()=>{
+                    return callback(error,null);
+                  })
+                });
+
+             }
             }
-            else{
+            else {
                 let error={
                   "message":"Agency does not exist. Please register the agency."
                 }
